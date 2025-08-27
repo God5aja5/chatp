@@ -1522,10 +1522,5 @@ def index():
     current_room_name = current_room.name if current_room else "Ghost Projects chat"
     return render_template_string(MAIN_HTML, user=user, rooms=rooms, current_room_name=current_room_name, max_files=MAX_FILES_PER_MESSAGE, image_exts=list(ALLOWED_IMAGE_EXT), video_exts=list(ALLOWED_VIDEO_EXT), max_file_size=MAX_FILE_SIZE, room_id=flask_session.get("room_id",1))
 
-# ---------------------------
-# Create WSGI app for Vercel
-# ---------------------------
-from engineio.middleware import WSGIMiddleware
-
-# Wrap the Flask app with the Socket.IO middleware
-app.wsgi_app = WSGIMiddleware(socketio)
+# Initialize database when the module is loaded
+init_db()
