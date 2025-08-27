@@ -2,7 +2,6 @@
 """
 Ghost Projects Chat - single-file Flask + Socket.IO application.
 Optimized for Vercel deployment with local SQLite database.
-UI bugs fixed and enhanced.
 """
 
 import os
@@ -61,6 +60,8 @@ BASE_DIR = "/tmp" if os.environ.get("VERCEL") else os.path.abspath(os.path.dirna
 DB_PATH = os.path.join(BASE_DIR, "chat.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 STICKER_FOLDER = os.path.join(BASE_DIR, "stickers")
+
+# Create directories if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(STICKER_FOLDER, exist_ok=True)
 
@@ -72,12 +73,10 @@ THUMB_MAX_SIZE = (1024, 1024)
 LONG_MESSAGE_LIMIT = 300  # chars; over this, server writes a .txt file and attaches it
 DEFAULT_AVATAR = "https://i.ibb.co/3mwVTQw9/x.jpg"
 
-# ✅ Generate SECRET_KEY internally if not provided
-SECRET_KEY = secrets.token_hex(32)
-
 app = Flask(__name__)
-app.config["SECRET_KEY"] = SECRET_KEY
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
+# Set secret key directly in code for Vercel deployment
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "ghost-chat-secret-key-change-in-production")
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["STICKER_FOLDER"] = STICKER_FOLDER
@@ -167,8 +166,6 @@ def init_stickers():
         if not os.path.exists(path):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(svg)
-
-init_stickers()
 
 def allowed_extension(filename):
     if "." not in filename:
@@ -1494,22 +1491,29 @@ def init_db():
     with app.app_context():
         db.create_all()
         ensure_message_columns()
+        init_stickers()
+        
         if not db.session.get(Room, 1):
             r = Room(id=1, owner_id=None, name="Ghost Projects chat", room_key="global", password_hash=None)
             db.session.add(r); db.session.commit()
+            
         if not User.query.filter_by(username="admin").first():
             admin = User(username="admin", display_name="Administrator")
             admin.set_password("admin")
             db.session.add(admin); db.session.commit()
+            
             if not RoomMember.query.filter_by(room_id=1, user_id=admin.id).first():
                 db.session.add(RoomMember(room_id=1, user_id=admin.id)); db.session.commit()
+                
             sys_msg = Message(sender_id=None, text="Welcome to Ghost Projects chat! Be kind.", rendered=render_md("Welcome to Ghost Projects chat! Be kind."), reactions=json.dumps({}), read_by=json.dumps([]), attachments=json.dumps([]), chat_id=1)
             db.session.add(sys_msg); db.session.commit()
             logger.info("Seeded admin and default message")
 
 # Vercel entry point
-def handler(event, context):
-    return app(event, context)
+def handler(event=None, context=None):
+    # Initialize database on first run
+    init_db()
+    return app
 
 if __name__ == "__main__":
     init_db()
