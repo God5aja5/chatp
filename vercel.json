@@ -25,7 +25,6 @@
     }
   ],
   "env": {
-    "SECRET_KEY": "@secret_key",
     "DATABASE_URL": "sqlite:///chat.db"
   }
 }
