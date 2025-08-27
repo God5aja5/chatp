@@ -72,8 +72,11 @@ THUMB_MAX_SIZE = (1024, 1024)
 LONG_MESSAGE_LIMIT = 300  # chars; over this, server writes a .txt file and attaches it
 DEFAULT_AVATAR = "https://i.ibb.co/3mwVTQw9/x.jpg"
 
+# ✅ Generate SECRET_KEY internally if not provided
+SECRET_KEY = secrets.token_hex(32)
+
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
+app.config["SECRET_KEY"] = SECRET_KEY
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
