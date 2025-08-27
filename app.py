@@ -73,8 +73,8 @@ THUMB_MAX_SIZE = (1024, 1024)
 LONG_MESSAGE_LIMIT = 300  # chars; over this, server writes a .txt file and attaches it
 DEFAULT_AVATAR = "https://i.ibb.co/3mwVTQw9/x.jpg"
 
+# Create Flask app
 app = Flask(__name__)
-# Set secret key directly in code for Vercel deployment
 app.config["SECRET_KEY"] = "ghost-chat-secret-key-change-in-production"
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -89,6 +89,9 @@ login_manager.login_view = "login"
 
 # For Vercel, we need to use threading for Socket.IO
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+
+# Global flag for database initialization
+db_initialized = False
 
 # ---------------------------
 # Models
@@ -243,6 +246,37 @@ def ensure_message_columns():
         if conn: conn.close()
 
 # ---------------------------
+# Database initialization
+# ---------------------------
+def init_db():
+    global db_initialized
+    if db_initialized:
+        return
+    
+    logger.info("Initializing database")
+    db.create_all()
+    ensure_message_columns()
+    init_stickers()
+    
+    if not db.session.get(Room, 1):
+        r = Room(id=1, owner_id=None, name="Ghost Projects chat", room_key="global", password_hash=None)
+        db.session.add(r); db.session.commit()
+        
+    if not User.query.filter_by(username="admin").first():
+        admin = User(username="admin", display_name="Administrator")
+        admin.set_password("admin")
+        db.session.add(admin); db.session.commit()
+        
+        if not RoomMember.query.filter_by(room_id=1, user_id=admin.id).first():
+            db.session.add(RoomMember(room_id=1, user_id=admin.id)); db.session.commit()
+            
+        sys_msg = Message(sender_id=None, text="Welcome to Ghost Projects chat! Be kind.", rendered=render_md("Welcome to Ghost Projects chat! Be kind."), reactions=json.dumps({}), read_by=json.dumps([]), attachments=json.dumps([]), chat_id=1)
+        db.session.add(sys_msg); db.session.commit()
+        logger.info("Seeded admin and default message")
+    
+    db_initialized = True
+
+# ---------------------------
 # Flask-Login
 # ---------------------------
 @login_manager.user_loader
@@ -253,7 +287,11 @@ def load_user(user_id):
         return None
 
 @app.before_request
-def ensure_room_in_session():
+def before_request():
+    # Initialize database if needed
+    init_db()
+    
+    # Ensure room in session
     if getattr(current_user, "is_authenticated", False):
         if flask_session.get("room_id") is None:
             flask_session["room_id"] = 1
@@ -1485,29 +1523,9 @@ def index():
     return render_template_string(MAIN_HTML, user=user, rooms=rooms, current_room_name=current_room_name, max_files=MAX_FILES_PER_MESSAGE, image_exts=list(ALLOWED_IMAGE_EXT), video_exts=list(ALLOWED_VIDEO_EXT), max_file_size=MAX_FILE_SIZE, room_id=flask_session.get("room_id",1))
 
 # ---------------------------
-# Initialize database
+# Create WSGI app for Vercel
 # ---------------------------
-def init_db():
-    with app.app_context():
-        db.create_all()
-        ensure_message_columns()
-        init_stickers()
-        
-        if not db.session.get(Room, 1):
-            r = Room(id=1, owner_id=None, name="Ghost Projects chat", room_key="global", password_hash=None)
-            db.session.add(r); db.session.commit()
-            
-        if not User.query.filter_by(username="admin").first():
-            admin = User(username="admin", display_name="Administrator")
-            admin.set_password("admin")
-            db.session.add(admin); db.session.commit()
-            
-            if not RoomMember.query.filter_by(room_id=1, user_id=admin.id).first():
-                db.session.add(RoomMember(room_id=1, user_id=admin.id)); db.session.commit()
-                
-            sys_msg = Message(sender_id=None, text="Welcome to Ghost Projects chat! Be kind.", rendered=render_md("Welcome to Ghost Projects chat! Be kind."), reactions=json.dumps({}), read_by=json.dumps([]), attachments=json.dumps([]), chat_id=1)
-            db.session.add(sys_msg); db.session.commit()
-            logger.info("Seeded admin and default message")
+from engineio.middleware import WSGIMiddleware
 
-# Initialize database when the module is loaded
-init_db()
+# Wrap the Flask app with the Socket.IO middleware
+app.wsgi_app = WSGIMiddleware(socketio)
