@@ -75,7 +75,7 @@ DEFAULT_AVATAR = "https://i.ibb.co/3mwVTQw9/x.jpg"
 
 app = Flask(__name__)
 # Set secret key directly in code for Vercel deployment
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "ghost-chat-secret-key-change-in-production")
+app.config["SECRET_KEY"] = "ghost-chat-secret-key-change-in-production"
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -1485,7 +1485,7 @@ def index():
     return render_template_string(MAIN_HTML, user=user, rooms=rooms, current_room_name=current_room_name, max_files=MAX_FILES_PER_MESSAGE, image_exts=list(ALLOWED_IMAGE_EXT), video_exts=list(ALLOWED_VIDEO_EXT), max_file_size=MAX_FILE_SIZE, room_id=flask_session.get("room_id",1))
 
 # ---------------------------
-# Startup: create tables & seed
+# Initialize database
 # ---------------------------
 def init_db():
     with app.app_context():
@@ -1509,13 +1509,5 @@ def init_db():
             db.session.add(sys_msg); db.session.commit()
             logger.info("Seeded admin and default message")
 
-# Vercel entry point
-def handler(event=None, context=None):
-    # Initialize database on first run
-    init_db()
-    return app
-
-if __name__ == "__main__":
-    init_db()
-    logger.info("Starting Ghost Projects Chat on http://127.0.0.1:5000")
-    socketio.run(app, host="0.0.0.0", port=int(os.environ.get("PORT",5000)), debug=True, allow_unsafe_werkzeug=True)
+# Initialize database when the module is loaded
+init_db()
